@@ -1,6 +1,6 @@
 # MathType-Word/WPS
 
-Codex skill and CLI helper for inserting editable MathType equations into Word manuscripts through WPS or Microsoft Word.
+Insert editable MathType equations into Word manuscripts through WPS or Microsoft Word.
 
 This skill is designed for manuscript production where formulas must remain editable, visually consistent, and publication-ready instead of being pasted as flat screenshots. It automates the fussy parts of the workflow: opening Word/WPS in the background, inserting a real MathType equation object, keeping the equation number as normal right-aligned text, matching formula size to the surrounding body text, and checking the saved document so you can tell whether the result is a true editable MathType object or only an image/OMML fallback. The primary target is `.docx`; legacy `.doc` files are supported through the same Word/WPS automation path after opening or converting them with Word/WPS when XML-level inspection is needed.
 
