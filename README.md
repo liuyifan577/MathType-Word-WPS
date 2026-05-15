@@ -93,6 +93,20 @@ Expected for real MathType OLE:
 - `blips=0`
 - `omath=0`
 
+## Use With Cursor, Claude Code, Or Other Agents
+
+The repository is published as a Codex skill, but the actual implementation is a normal Windows Python CLI. Other coding agents can use it as long as they can run PowerShell commands on the same Windows desktop where Word/WPS and MathType are installed.
+
+Notes for Cursor, Claude Code, and similar clients:
+
+- Use the CLI in `scripts/mathtype_word_wps.py` directly; Codex-style automatic skill discovery is not available unless that client implements its own skill loader.
+- Copy the relevant workflow rules from `SKILL.md` into the client's project rules or prompt instructions, especially the OLE-first workflow, hidden Word/WPS launch, formula sizing, and XML inspection steps.
+- Run from a real Windows desktop session, not WSL, a remote Linux shell, or a headless container. MathType OLE insertion depends on Windows COM automation.
+- Keep the target document closed in other Word/WPS processes when doing offline replacements, or reuse the same open application session carefully; duplicate opens can make the file read-only.
+- Start with `check-env --probe-com --probe-mathtype` before editing a manuscript, because missing MathType activation or missing `Equation.DSMT4` registration will prevent real editable OLE insertion.
+
+Only the Codex workflow has been exercised end-to-end in this repository so far. Cursor and Claude Code should work through the CLI path, but users should treat them as compatible-by-design rather than fully validated clients until they run the environment check and a small formula replacement test.
+
 ## Install As A Codex Skill
 
 Clone or copy this folder into your Codex skills directory:
