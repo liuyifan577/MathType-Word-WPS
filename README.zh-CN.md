@@ -4,7 +4,7 @@
 
 在多模态大模型辅助识别/转写公式图片的前提下，MathType-Word/WPS 提供从公式图片到可编辑 MathType 公式、自动插入 Word/WPS 文档、自适应手稿布局与结果校验的全流程能力。
 
-这个工具面向论文、学位论文、报告等正式文档场景：公式不能只是截图，插入后应该能继续双击用 MathType 编辑，字号和正文协调，编号仍然是文档里的普通右对齐文本，后续排版、修改、审稿都更稳。它会自动处理很多容易踩坑的细节，包括后台打开 Word/WPS、创建真实 MathType 公式对象、按正文字号设置 MathType 内部公式主字符大小、再匹配 OLE 外框尺寸、保留公式编号、检查保存后的文档结构，并区分“真正可编辑的 MathType 对象”和“只是图片或 OMML 公式”的情况。
+这个工具面向论文、学位论文、报告等正式文档场景：公式不能只是截图，插入后应该能继续双击用 MathType 编辑，字号和正文协调，编号仍然是文档里的普通右对齐文本，后续排版、修改、审稿都更稳。它会自动处理很多容易踩坑的细节，包括后台打开 Word/WPS、创建真实 MathType 公式对象、按正文字号设置 MathType 内部公式主字符大小和 Times New Roman 字体族、再匹配 OLE 外框尺寸但不把复杂公式压缩到低于 MathType 自然高度、保留公式编号、检查保存后的文档结构，并区分“真正可编辑的 MathType 对象”和“只是图片或 OMML 公式”的情况。
 
 主要目标格式是 `.docx`。旧版 `.doc` 也可以通过 Word/WPS 自动化流程处理；如果需要做 XML 级检查，建议先用 Word/WPS 打开或转换为 `.docx`。
 
@@ -13,7 +13,7 @@
 - 创建真实可编辑的 MathType OLE 公式对象：`Equation.DSMT4`。这是 Word/WPS 能重新调用 MathType 打开并编辑的公式对象类型。
 - 自动选择 WPS 或 Microsoft Word COM 后端。
 - 公式编号保持为普通文档文本，并放在右侧对齐。
-- 根据正文默认字号设置 MathType 内部公式主字符大小，再匹配 OLE 外框尺寸，避免只缩放外框造成公式视觉不统一。
+- 根据正文默认字号设置 MathType 内部公式主字符大小和 Times New Roman 字体族，再匹配 OLE 外框尺寸，避免只缩放外框造成公式视觉不统一。
 - 检查 DOCX XML，确认公式是否为 OLE 对象、图片、OMML 或其它形式。
 - 在明确需要时，可使用 WMF/EMF 矢量图片作为后备方案。
 
@@ -94,6 +94,8 @@ python .\scripts\mathtype_word_wps.py replace-docx-ole `
 默认情况下，`--backend auto` 会先尝试 WPS，失败后再尝试 Word。也可以使用 `--backend word`、`--backend wps` 或 `--com-progid ...` 强制指定后端并关闭自动回退。
 
 正常处理时，Word 和 WPS 都会通过 COM 后台隐藏打开，不应该弹出前台窗口。
+
+尺寸规则：`--formula-font-scale 0.8` 控制的是 MathType 内部主字符字号，不只是外层 OLE 框大小；默认公式字体族为 `Times New Roman`。遇到分式、大型求和、多行对齐等复杂公式时，OLE 外框只作为最小容器，默认不会把对象压缩到低于 MathType 自然插入高度，除非显式传入 `--allow-downscale-ole`。粘贴前 MathML 会转换为 ASCII 数字实体，避免希腊字母、`×`、`·`、`∑` 等符号在 MathType 粘贴路径里变成问号。
 
 ## 检查插入结果
 

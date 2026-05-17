@@ -17,7 +17,9 @@ For image-to-editable-formula work, this skill does not do formula OCR. First ob
 - Put the equation number, e.g. `(1)`, in the Word/WPS paragraph as normal text; do not include it inside MathType.
 - Default layout is one paragraph: center tab -> formula object -> right tab -> number.
 - Always inspect after insertion: require `ole_objects=1`, `ole_progids=['Equation.DSMT4']`, `blips=0`, `omath=0`, expected text number, and sane tab stops.
-- Do not treat insertion as complete until the MathType internal main-character size is normalized against manuscript body text. Default: `formula_font_pt = body_font_pt * 0.8`; the script injects this into MathML as `mstyle mathsize="...pt"` before pasting into MathType. The OLE frame height is only a container fit derived from line count and `ole_line_height_factor=2.1`, not the primary font-size control.
+- Do not treat insertion as complete until the MathType internal main-character size and font family are normalized against manuscript body text. Default: `formula_font_pt = body_font_pt * 0.8` and `formula_font_family = Times New Roman`; the script injects these into MathML as `mstyle mathsize="...pt" mathfamily="Times New Roman" fontfamily="Times New Roman"` before pasting into MathType.
+- The OLE frame is only a container fit, not the primary font-size control. Never shrink a complex formula below MathType's natural inserted height unless the user explicitly allows downscaling with `--allow-downscale-ole`; otherwise fractions, large sums, and multi-row formulas can look falsely smaller even when the internal formula font was set correctly.
+- Before pasting into MathType, serialize MathML to ASCII numeric entities for clipboard formats. This avoids Greek letters, multiplication signs, middle dots, summation symbols, and similar characters being mis-decoded as `?` or mojibake in MathType's OLE paste path.
 - Word/WPS must be opened in hidden/background COM mode. Do not show Word/WPS UI during normal processing; `--visible-app` is deprecated and ignored by the script.
 - If MathType is missing, not registered, or appears unlicensed/not activated, stop and tell the user to install, repair, register, or activate MathType before retrying.
 - Keep a backup before modifying a live manuscript.
@@ -70,6 +72,7 @@ python "${SKILL_DIR}\scripts\mathtype_word_wps.py" replace-docx-ole `
   --number "(4)" `
   --backend auto `
   --formula-font-scale 0.8 `
+  --formula-font-family "Times New Roman" `
   --formula-lines 1 `
   --backup
 ```
@@ -91,13 +94,15 @@ Useful options:
 - `--one-based`: treat paragraph index as Word/WPS one-based instead of OpenXML zero-based.
 - `--body-font-pt 12`: override body font detection.
 - `--formula-font-scale 0.75`: set MathType internal formula characters to 75% of body text instead of the default 80%, then fit the OLE frame around that formula.
+- `--formula-font-family "Times New Roman"`: set the MathType formula family before paste; keep this for manuscripts that require New Roman formulas.
 - `--formula-lines 2`: force two-line height for aligned formulas.
 - `--height-pt 20`: fixed object height override.
+- `--allow-downscale-ole`: allow shrinking the OLE frame below MathType's natural inserted height; avoid this for final manuscripts unless you intentionally want smaller displayed formulas.
 - `--ole-class-type Equation.DSMT4`: override only if the local MathType registration differs.
 
 ## Resize Existing MathType OLE
 
-Use this only when a formula is already an OLE object and the frame fit is wrong. This edits the VML/OLE frame only and does not reopen MathType, so it cannot change MathType internal character size. To change the actual formula character size, rerun `replace-docx-ole` from the source MathML/LaTeX.
+Use this only when a formula is already an OLE object and the frame fit is wrong. This edits the VML/OLE frame only and does not reopen MathType, so it cannot change MathType internal character size, font family, or mojibake/question-mark content. To change the actual formula character size or New Roman font family, rerun `replace-docx-ole` from the source MathML/LaTeX.
 
 ```powershell
 python "${SKILL_DIR}\scripts\mathtype_word_wps.py" resize-docx-ole `

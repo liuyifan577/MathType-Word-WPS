@@ -4,14 +4,14 @@
 
 With multimodal model assistance for image-to-formula transcription, MathType-Word/WPS provides an end-to-end workflow from formula images to editable MathType equations, automatic Word/WPS document insertion, and adaptive manuscript layout.
 
-This skill is designed for manuscript production where formulas must remain editable, visually consistent, and publication-ready instead of being pasted as flat screenshots. It automates the fussy parts of the workflow: opening Word/WPS in the background, inserting a real MathType equation object, keeping the equation number as normal right-aligned text, setting the MathType internal formula character size from the manuscript body font, fitting the OLE frame around that formula, and checking the saved document so you can tell whether the result is a true editable MathType object or only an image/OMML fallback. The primary target is `.docx`; legacy `.doc` files are supported through the same Word/WPS automation path after opening or converting them with Word/WPS when XML-level inspection is needed.
+This skill is designed for manuscript production where formulas must remain editable, visually consistent, and publication-ready instead of being pasted as flat screenshots. It automates the fussy parts of the workflow: opening Word/WPS in the background, inserting a real MathType equation object, keeping the equation number as normal right-aligned text, setting the MathType internal formula character size and Times New Roman family from the manuscript body font, fitting the OLE frame around that formula without shrinking complex formulas below their natural MathType height, and checking the saved document so you can tell whether the result is a true editable MathType object or only an image/OMML fallback. The primary target is `.docx`; legacy `.doc` files are supported through the same Word/WPS automation path after opening or converting them with Word/WPS when XML-level inspection is needed.
 
 It supports:
 
 - creating real editable MathType OLE equations (`Equation.DSMT4`, the MathType equation object type that Word/WPS can reopen and edit with MathType)
 - using WPS or Word COM backends
 - keeping equation numbers as normal right-aligned document text
-- setting MathType internal formula character size against document body font size, then fitting the OLE frame
+- setting MathType internal formula character size and Times New Roman family against document body font size, then fitting the OLE frame without unintended downscaling
 - inspecting DOCX XML for OLE/image/OMML correctness
 - exporting/inserting WMF/EMF formula images as an explicit fallback
 
@@ -92,6 +92,8 @@ python .\scripts\mathtype_word_wps.py replace-docx-ole `
 By default, `--backend auto` tries the full insertion workflow with WPS first and then Word if WPS fails. Use `--backend word`, `--backend wps`, or `--com-progid ...` to force one backend and disable fallback.
 
 Word and WPS are always opened hidden through COM automation. The tool should not show the Word/WPS UI during normal processing.
+
+Sizing rule: `--formula-font-scale 0.8` controls the internal MathType main-character size, not just the external OLE box. The default font family is `Times New Roman`. For complex formulas with fractions, large sums, or multi-row alignment, the OLE frame is treated as a minimum container and is not shrunk below MathType's natural inserted height unless `--allow-downscale-ole` is explicitly passed. MathML is serialized as ASCII numeric entities before paste so symbols such as Greek letters, `×`, `·`, and `∑` do not become question marks in MathType.
 
 ## Inspect
 

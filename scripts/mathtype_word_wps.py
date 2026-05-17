@@ -106,9 +106,9 @@ def format_pt(value: float) -> str:
     return text if text else "0"
 
 
-def apply_mathml_font_size(mathml: str, font_pt: float | None) -> str:
-    """Wrap MathML content in mstyle so MathType receives a real formula size."""
-    if font_pt is None or float(font_pt) <= 0:
+def apply_mathml_font_size(mathml: str, font_pt: float | None, font_family: str = "Times New Roman") -> str:
+    """Wrap MathML content in mstyle so MathType receives real font size/family."""
+    if (font_pt is None or float(font_pt) <= 0) and not font_family:
         return mathml
     stripped = mathml.strip()
     if not stripped:
@@ -122,20 +122,42 @@ def apply_mathml_font_size(mathml: str, font_pt: float | None) -> str:
         return mathml
 
     ns_uri = etree.QName(root).namespace or root.nsmap.get(None) or "http://www.w3.org/1998/Math/MathML"
-    size = f"{format_pt(font_pt)}pt"
+    size = f"{format_pt(font_pt)}pt" if font_pt is not None and float(font_pt) > 0 else ""
     children = list(root)
     if len(children) == 1 and etree.QName(children[0]).localname == "mstyle":
-        children[0].set("mathsize", size)
+        mstyle = children[0]
     else:
         mstyle = etree.Element(f"{{{ns_uri}}}mstyle")
-        mstyle.set("mathsize", size)
         mstyle.text = root.text
         root.text = None
         for child in children:
             root.remove(child)
             mstyle.append(child)
         root.append(mstyle)
+    if size:
+        mstyle.set("mathsize", size)
+    if font_family:
+        # MathType accepts legacy Presentation MathML font attributes better
+        # than CSS style in several OLE paste paths.
+        mstyle.set("mathfamily", font_family)
+        mstyle.set("fontfamily", font_family)
+        mstyle.set("style", f"font-family:{font_family};")
     return etree.tostring(root, encoding="unicode")
+
+
+def mathml_clipboard_text(mathml: str) -> str:
+    """Serialize MathML as ASCII numeric entities for robust MathType paste."""
+    stripped = mathml.strip()
+    if not stripped:
+        return mathml
+    parser = etree.XMLParser(remove_blank_text=False, recover=True)
+    try:
+        root = etree.fromstring(stripped.encode("utf-8"), parser=parser)
+    except Exception:
+        return mathml
+    if etree.QName(root).localname != "math":
+        return mathml
+    return etree.tostring(root, encoding="ascii", xml_declaration=False).decode("ascii")
 
 
 def parse_css_pt(style: str | None) -> dict[str, float]:
@@ -644,17 +666,19 @@ def wait_for_mathtype_window(before: set[int], timeout: float = 25.0) -> int:
 def set_mathml_clipboard(mathml: str) -> None:
     import win32clipboard
 
+    safe_mathml = mathml_clipboard_text(mathml)
     win32clipboard.OpenClipboard()
     try:
         win32clipboard.EmptyClipboard()
-        win32clipboard.SetClipboardText(mathml, win32clipboard.CF_UNICODETEXT)
+        win32clipboard.SetClipboardText(safe_mathml, win32clipboard.CF_UNICODETEXT)
         custom = {
             name: win32clipboard.RegisterClipboardFormat(name)
             for name in ("MathML", "MathML Presentation", "application/mathml+xml")
         }
-        win32clipboard.SetClipboardData(custom["MathML"], mathml.encode("utf-16le"))
-        win32clipboard.SetClipboardData(custom["MathML Presentation"], mathml.encode("utf-8"))
-        win32clipboard.SetClipboardData(custom["application/mathml+xml"], mathml.encode("utf-16le"))
+        encoded = safe_mathml.encode("utf-8")
+        win32clipboard.SetClipboardData(custom["MathML"], encoded)
+        win32clipboard.SetClipboardData(custom["MathML Presentation"], encoded)
+        win32clipboard.SetClipboardData(custom["application/mathml+xml"], encoded)
     finally:
         win32clipboard.CloseClipboard()
 
@@ -1572,7 +1596,11 @@ def replace_docx_ole_once(
         win32gui.PostMessage(hwnd, win32con.WM_COMMAND, MATHTYPE_SELECT_ALL_COMMAND_ID, 0)
         time.sleep(0.3)
 
-        sized_mathml = apply_mathml_font_size(mathml, float(size_info["mathml_font_size_pt"]))
+        sized_mathml = apply_mathml_font_size(
+            mathml,
+            float(size_info["mathml_font_size_pt"]),
+            font_family=args.formula_font_family,
+        )
         set_mathml_clipboard(sized_mathml)
         win32gui.PostMessage(hwnd, win32con.WM_COMMAND, MATHTYPE_PASTE_COMMAND_ID, 0)
         time.sleep(float(args.after_paste_wait))
@@ -1593,11 +1621,23 @@ def replace_docx_ole_once(
         shape_count = int(call_with_retry(lambda: inline_shapes.Count))
         if shape_count:
             inserted = call_with_retry(lambda: inline_shapes(1))
+            natural_height = float(call_with_retry(lambda target=inserted: target.Height))
+            natural_width = float(call_with_retry(lambda target=inserted: target.Width))
+            target_height = float(size_info["resolved_height_pt"])
+            if not args.allow_downscale_ole:
+                target_height = max(target_height, natural_height)
             try:
                 inserted.LockAspectRatio = True
             except Exception:
                 pass
-            inserted.Height = float(size_info["resolved_height_pt"])
+            inserted.Height = target_height
+            final_height = float(call_with_retry(lambda target=inserted: target.Height))
+            final_width = float(call_with_retry(lambda target=inserted: target.Width))
+            print(f"ole_natural_width_pt={round(natural_width, 2)}")
+            print(f"ole_natural_height_pt={round(natural_height, 2)}")
+            print(f"ole_final_width_pt={round(final_width, 2)}")
+            print(f"ole_final_height_pt={round(final_height, 2)}")
+            print(f"allow_downscale_ole={bool(args.allow_downscale_ole)}")
 
         call_with_retry(lambda: doc.Save())
         print(f"backend_used={backend_label} progid={com_progid}")
@@ -1700,6 +1740,8 @@ def replace_docx_ole(args: argparse.Namespace) -> None:
     info = inspect_docx_path(output, paragraph_index)
     print_inspection(info)
     print_size_info(size_info)
+    print(f"formula_font_family={args.formula_font_family}")
+    print(f"preserve_natural_height={not bool(args.allow_downscale_ole)}")
     if args.validate_wps:
         print(f"wps_open={validate_wps_open(output)}")
     if args.reopen_screenshot:
@@ -1851,6 +1893,7 @@ def build_parser() -> argparse.ArgumentParser:
     ole.add_argument("--height-pt", type=float, help="Override OLE object height in points. Default: auto from body font.")
     ole.add_argument("--body-font-pt", type=float, help="Override detected manuscript body font size in points.")
     ole.add_argument("--formula-font-scale", type=float, default=0.8, help="Formula font target as body-font multiple. Default: 0.8.")
+    ole.add_argument("--formula-font-family", default="Times New Roman", help="MathType formula font family injected into MathML. Default: Times New Roman.")
     ole.add_argument("--ole-line-height-factor", type=float, default=2.1, help="OLE visual frame height per formula font point per line. Default: 2.1.")
     ole.add_argument("--formula-lines", type=int, default=0, help="Override formula line count. Default: infer from MathML mtable rows.")
     ole.add_argument("--center-tab-twips", type=int, default=4649)
@@ -1865,6 +1908,7 @@ def build_parser() -> argparse.ArgumentParser:
     ole.add_argument("--reopen-screenshot", default="")
     ole.add_argument("--visible-app", action="store_true", help="Deprecated/no-op: Word/WPS COM is always opened hidden.")
     ole.add_argument("--foreground-editor", action="store_true", help="Bring MathType editor to foreground. Word/WPS stays hidden.")
+    ole.add_argument("--allow-downscale-ole", action="store_true", help="Allow the OLE frame to shrink below MathType's natural inserted height. Default: preserve natural height to avoid tiny formulas.")
     ole.add_argument("--cleanup-mathtype", action="store_true")
     ole.add_argument("--backup", action="store_true")
     ole.add_argument("--validate-wps", action="store_true")
